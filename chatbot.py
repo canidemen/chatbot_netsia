@@ -96,12 +96,12 @@ async def stream_answer(messages):
         stream=True,
         temperature=0.3,
     )
-    resp = ""
+    #resp = ""
     async for chunk in stream:
         delta = chunk.choices[0].delta.content or ""
         if delta:
-            resp += delta
-            yield resp
+            #resp += delta
+            yield delta
 
 async def process_user_message(user_id, text, history, pool, label, confidence):
     ticket = {
