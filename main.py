@@ -6,6 +6,9 @@ from contextlib import asynccontextmanager
 import asyncpg
 from redis.asyncio import Redis
 import hashlib
+import time
+
+PG_DSN = "postgresql://postgres:admin123@localhost:5432/postgres"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,6 +18,7 @@ async def lifespan(app: FastAPI):
         username="default",
         password="c5yOQ9dO6PcoVPxEx9ZGxpaKhnzdZnJp",
         decode_responses=True,
+        #ssl=True,
         socket_connect_timeout=5,
         socket_timeout=5,
         retry_on_timeout=True,
@@ -25,7 +29,7 @@ async def lifespan(app: FastAPI):
     app.state.cache = ChatCache(redis)
 
     pool = await asyncpg.create_pool(
-        dsn="postgresql://postgres:admin123@localhost:5432/postgres",
+        dsn=PG_DSN,
         min_size=1,
         max_size=10,
     )
@@ -81,6 +85,8 @@ with gr.Blocks(title="Telecom Support Chatbot") as demo:
 
     # 2) Send handler: append user msg, stream assistant, store once at end
     async def on_send(user_text, messages, session_id, request: gr.Request):
+        start_1 = time.perf_counter()
+
         cache = app.state.cache
         pool = app.state.pool
 
@@ -99,19 +105,37 @@ with gr.Blocks(title="Telecom Support Chatbot") as demo:
         await cache.store_message(session_id, role="user", content=user_text)
         yield messages, ""  # Input clears, user sees their message
 
+        total_1 = time.perf_counter() - start_1
+        print(f"Total first half before-stream duration: {total_1:.2f} seconds")
+
+        start_2 = time.perf_counter()
+
         # Step 2: Add blank assistant message, yield so bubble appears instantly
         assistant_msg = {"role": "assistant", "content": "..."}
         messages.append(assistant_msg)
         yield messages, ""  # User sees empty assistant bubble right away
 
+        total_2 = time.perf_counter() - start_2
+        print(f"Total second half before-stream duration: {total_2:.2f} seconds")
+
         # Step 3: Stream assistant's reply into last message, updating content each chunk
+        start_3 = time.perf_counter()
+
         assistant_text = ""
         user_id = session_id.replace("session_", "", 1)
         prev_history = await cache.get_history(session_id) or []
+
+        total_3_5 = time.perf_counter() - start_3
+        print(f"Total third half before-yield duration: {total_3_5:.2f} seconds")
+
+
         async for chunk in handle_message(user_id, user_text, prev_history, pool):
             assistant_text += chunk
             messages[-1]["content"] = assistant_text
             yield messages, ""  # UI updates with each token/chunk
+        
+        total_3 = time.perf_counter() - start_3
+        print(f"Total third half stream duration: {total_3:.2f} seconds")
 
         # Step 4: Store final assistant message in cache (one entry per message)
         if assistant_text:

@@ -90,18 +90,30 @@ async def call_tool(name, arguments, pool):
     return {"status": "error", "error": f"Unknown tool {name}"}
 
 async def stream_answer(messages):
+    start = time.perf_counter()
+
     stream = await openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
         stream=True,
         temperature=0.3,
     )
+    first_chunk_time = None
+
     #resp = ""
     async for chunk in stream:
         delta = chunk.choices[0].delta.content or ""
         if delta:
             #resp += delta
+            if first_chunk_time is None:
+                first_chunk_time = time.perf_counter()
+                print(f"First token latency: {first_chunk_time - start:.2f} seconds")
+
             yield delta
+            
+    total = time.perf_counter() - start
+    print(f"Total OpenAI API stream duration: {total:.2f} seconds")
+
 
 async def process_user_message(user_id, text, history, pool, label, confidence):
     ticket = {

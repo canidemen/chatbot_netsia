@@ -1,4 +1,5 @@
 from transformers import pipeline
+import time
 
 CONFIDENCE_THRESHOLD = 0.7      #if lower, kafka
 classifier = pipeline("zero-shot-classification", model="MoritzLaurer/deberta-v3-large-zeroshot-v2.0")
@@ -44,6 +45,8 @@ LABELS = [
 
 
 def classify(message):
+    start = time.perf_counter()
+
     
     result = classifier(
         message,
@@ -54,6 +57,11 @@ def classify(message):
     label = result["labels"][0]
 
     print(result)
+
+    total = time.perf_counter() - start
+    print(f"Total classification duration: {total:.2f} seconds")
+
+
     return (label, confidence) if confidence > CONFIDENCE_THRESHOLD else (None, None)
 
 
