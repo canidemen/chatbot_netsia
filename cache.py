@@ -1,104 +1,65 @@
 import json
 from datetime import datetime, timezone
 import uuid
-
+import secrets
+from typing import Optional, List
 from redis.asyncio import Redis
 
-'''
-r = redis.Redis(
-    host="redis-15242.c241.us-east-1-4.ec2.redns.redis-cloud.com",
-    port=15242,
-    password="Def.ine!23",  # copy from your Redis Cloud console
-    ssl=True,                  # enable TLS
-    decode_responses=True,     # strings instead of bytes
-    socket_connect_timeout=5,  # seconds
-    socket_timeout=5,
-    retry_on_timeout=True
-)
-'''
-
 class ChatCache:
-    def __init__(self, Redis):
-        self.redis = Redis
+    def __init__(self, redis_client):
+        self.redis = redis_client
 
-    async def create_session(self, user_id):
-        session_id = str(uuid.uuid4())[:8]
-        session_key = f"session:{session_id}"
-        await self.redis.hset(session_key, mapping={
-            "user_id": user_id,
-            "status": "active",
-            "start_time": datetime.now(timezone.utc).isoformat()
-        })
-        await self.redis.expire(session_key, 600)   #session expires after 10 minutes
+    # ----------------------------
+    # SESSION MANAGEMENT 
+    # ----------------------------
 
-        # track sessions for user
-        await self.redis.sadd(f"user:{user_id}:sessions", session_id)
+    async def issue_sid(self, user_id, ttl = 600) -> str:
+        # cryptographically strong, URL-safe; much lower collision risk vs 8-char uuid slice
+        sid = "sid_" + secrets.token_urlsafe(32)
+        await self.redis.setex(sid, ttl, str(user_id))
+        return sid
 
-        return session_id
+    async def get_user_id_for_sid(self, sid):
+        return await self.redis.get(sid)
 
-    async def get_session_user(self, session_id):
-        return await self.redis.hget(f"session:{session_id}", "user_id")
+    async def refresh_sid(self, sid, ttl = 600):
+        await self.redis.expire(sid, ttl)
 
-    async def update_session_end_time(self, session_id):
-        await self.redis.hset(f"session:{session_id}", "end_time", datetime.now(timezone.utc).isoformat())
+    async def create_session(self, user_id, ttl = 600):
+        return await self.issue_sid(user_id, ttl)
 
-    async def store_message(self, session_id, role, content):
-        history_key = f"chat:{session_id}"
-        entry = json.dumps({"role": role, "content": content})
-        await self.redis.rpush(history_key, entry)
-        await self.redis.expire(history_key, 600)
-
-    async def get_history(self, session_id):
-        history_key = f"chat:{session_id}"
-        raw_entries = await self.redis.lrange(history_key, 0, -1)
-        return [json.loads(entry) for entry in raw_entries]
-
-    async def list_sessions_for_user(self, user_id):
-        return list(await self.redis.smembers(f"user:{user_id}:sessions"))
+    # async def get_session_user(self, session_id):
+    #     return await self.get_user_id_for_sid(session_id)
 
     async def close_session(self, session_id):
-        await self.redis.hset(f"session:{session_id}", "status", "closed")
-        await self.update_session_end_time(session_id)
+        await self.redis.delete(session_id)
 
+    # ---------------------------------------------------
+    # old code
+    # ---------------------------------------------------
+    # async def store_message(self, session_id: str, role: str, content: str, ttl: int = 600) -> None:
+    #     history_key = f"chat:{session_id}"
+    #     entry = json.dumps({
+    #         "role": role,
+    #         "content": content,
+    #         "ts": datetime.now(timezone.utc).isoformat()
+    #     })
+    #     # [KEEP] list append + sliding TTL
+    #     await self.redis.rpush(history_key, entry)
+    #     await self.redis.expire(history_key, ttl)
 
-'''
-r = redis.Redis(
-    host="redis-15242.c241.us-east-1-4.ec2.redns.redis-cloud.com",
-    port= 15242,
-    password="c5yOQ9dO6PcoVPxEx9ZGxpaKhnzdZnJp",
-    decode_responses=True
-)
+    # async def get_history(self, session_id: str) -> List[dict]:
+    #     history_key = f"chat:{session_id}"
+    #     raw = await self.redis.lrange(history_key, 0, -1)
+    #     return [json.loads(x) for x in raw]
 
-print(r.ping())
-
-r.set("asad", "123213", ex=60)
-print(r.get("age"))
-
-
-session_id = "sess_123"  # generate or read from user cookie
-key = f"chat:{session_id}:messages"
-
-def add_message(role, content):
-    msg_id = r.incr(f"{key}:next_id")
-    msg = {
-        "id": msg_id,
-        "role": role,
-        "content": content,
-        "ts": datetime.now(timezone.utc).isoformat()
-    }
-    pipe = r.pipeline()
-    pipe.rpush(key, json.dumps(msg))
-    pipe.expire(key, 86400)        # 24h sliding window
-    pipe.execute()
-
-def get_history():
-    return [json.loads(x) for x in r.lrange(key, 0, -1)]
-
-
-
-
-
-add_message("user", "Hello") 
-add_message("assistant", "Hi Can!")
-print(get_history())
-'''
+    # async def list_sessions_for_user(self, user_id: str) -> List[str]:
+    #     """
+    #     v1 tracked `user:{user_id}:sessions` via a set; v2 doesn't.
+    #     For backcompat, this returns an empty list unless you also add tracking.
+    #     If you still need this, uncomment the SADD in create_session and SREM in revoke.
+    #     """
+    #     return []
+    #     # If you want to restore tracking, add these in create_session/revoke_sid:
+    #     # await self.redis.sadd(f"user:{user_id}:sessions", sid)
+    #     # await self.redis.srem(f"user:{user_id}:sessions", sid)
