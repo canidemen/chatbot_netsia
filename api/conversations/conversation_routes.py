@@ -128,11 +128,13 @@ async def get_messages(conversation_id: str, request: Request, limit: int = 200,
             SELECT role, content
             FROM messages
             WHERE conversation_id=$1
-            ORDER BY id ASC
+            ORDER BY position ASC
             LIMIT $2
             """,
             conversation_id, limit,
         )
+        print("rows")
+        print([{"role": r["role"], "content": r["content"]} for r in rows])
         return [{"role": r["role"], "content": r["content"]} for r in rows]
     
 @router.post("/{conversation_id}/messages")

@@ -41,6 +41,10 @@ def create_chat_page():
             display: flex;
             flex-direction: column;
         }
+        
+        .sidebar:hover {
+            background-color: transparent !important;
+        }
 
         .sidebar-header {
             padding: 16px;
@@ -60,11 +64,15 @@ def create_chat_page():
             transition: background-color 0.2s;
             border: 1px solid transparent;
             display: block !important;
-            width: 100% !important;
+            width: 95% !important;
+            box-sizing: border-box;
+            background-color: transparent;
         }
 
-        .conversation-item:hover {
-            background-color: #ececf1;
+        .conversation-item label:hover {
+            background-color: #d0e7ff !important;
+            border-radius: 8px;
+            cursor: pointer;
         }
 
         .conversation-item.selected {
@@ -115,20 +123,21 @@ def create_chat_page():
         }
 
         .chat-column {
-            height: 100vh;
-            max-height: 100vh;
+            height: 150vh;
+            max-height: 200vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
         .chat-messages {
-            flex: 1;
+            flex: 5;
             overflow-y: auto;
             min-height: 0;
         }
 
         .chat-input {
+            flex: 1;
             flex-shrink: 0;
             padding: 16px;
             border-top: 1px solid #e5e5e5;
@@ -158,7 +167,7 @@ def create_chat_page():
                 
                 # Chat messages area - flexible height
                 with gr.Column(elem_classes=["chat-messages"]):
-                    chatbot = gr.Chatbot(type="messages", height="calc(100vh - 200px)", label=None)
+                    chatbot = gr.Chatbot(type="messages", height="100vh", label=None)
                 
                 # Input area - fixed at bottom
                 with gr.Column(elem_classes=["chat-input"]):
